@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SupplyChain {
+    // Enum to define the stages of the product in the supply chain
+    enum State { Manufactured, ForSale, Sold, Shipped, Received }
+
+    // Structure to hold product details
+    struct Product {
+        uint productId;
+        string name;
+        address owner;
+        State state;
+        uint price;
+    }
+
+    // Mapping to track all products by their productId
+    mapping(uint => Product) public products;
+
+    // Event for product updates
+    event ProductStateChanged(uint productId, State newState);
+
+    // Counter to generate product IDs
+    uint public productCounter;
+
+    // Modifier to check if the caller is the owner of the product
+    modifier onlyOwner(uint _productId) {
+        require(products[_productId].owner == msg.sender, "Only the owner can perform this action");
+        _;
+    }
+
+    // Modifier to check if the product is in the required state
+    modifier inState(uint _productId, State _state) {
+        require(products[_productId].state == _state, "Invalid product state");
+        _;
+    }
+
+    // Function to add a new product to the supply chain
+    function addProduct(string memory _name, uint _price) public {
+        productCounter++;  // Increment product counter for unique product IDs
+
+        // Create a new product and store it in the products mapping
+        products[productCounter] = Product({
+            productId: productCounter,
+            name: _name,
+            owner: msg.sender,
+            state: State.Manufactured,
+            price: _price
+        });
+
+        // Emit event for product creation
+        emit ProductStateChanged(productCounter, State.Manufactured);
+    }
+
+    // Function to mark product as for sale
+    function markForSale(uint _productId) public onlyOwner(_productId) inState(_productId, State.Manufactured) {
+        products[_productId].state = State.ForSale;
+        emit ProductStateChanged(_productId, State.ForSale);
+    }
+
+    // Function to purchase a product
+    function purchaseProduct(uint _productId) public payable inState(_productId, State.ForSale) {
+        Product storage product = products[_productId];
+        require(msg.value >= product.price, "Insufficient payment");
+
+        // Transfer ownership and update state
+        product.owner = msg.sender;
+        product.state = State.Sold;
+        emit ProductStateChanged(_productId, State.Sold);
+    }
+
+    // Function to ship a product
+    function shipProduct(uint _productId) public onlyOwner(_productId) inState(_productId, State.Sold) {
+        products[_productId].state = State.Shipped;
+        emit ProductStateChanged(_productId, State.Shipped);
+    }
+
+    // Function to confirm receipt of the product
+    function confirmReceived(uint _productId) public onlyOwner(_productId) inState(_productId, State.Shipped) {
+        products[_productId].state = State.Received;
+        emit ProductStateChanged(_productId, State.Received);
+    }
+
+    // Function to get product details
+    function getProduct(uint _productId) public view returns (string memory name, address owner, State state, uint price) {
+        Product memory product = products[_productId];
+        return (product.name, product.owner, product.state, product.price);
+    }
+}
