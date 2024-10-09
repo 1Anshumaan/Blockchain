@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract HotelBooking {
+    address public owner;
+    uint public roomCount = 0;
+
+    struct Room {
+        uint id;
+        uint pricePerNight;
+        bool isAvailable;
+    }
+
+    struct Booking {
+        address customer;
+        uint roomId;
+        uint checkInDate;
+        uint checkOutDate;
+        bool isActive;
+    }
+
+    // Mapping for rooms and bookings
+    mapping(uint => Room) public rooms;
+    mapping(uint => Booking) public bookings;
+    uint public bookingCount = 0;
+
+    // Events for logging
+    event RoomAdded(uint roomId, uint pricePerNight);
+    event RoomBooked(uint bookingId, address customer, uint roomId, uint checkInDate, uint checkOutDate);
+    event BookingCancelled(uint bookingId, address customer);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "You are not the owner");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender; // The owner of the contract is the one who deploys it
+    }
+
+    // Add a room (only the owner can add rooms)
+    function addRoom(uint pricePerNight) public onlyOwner {
+        roomCount++;
+        rooms[roomCount] = Room(roomCount, pricePerNight, true);
+        emit RoomAdded(roomCount, pricePerNight);
+    }
+
+    // Book a room
+    function bookRoom(uint roomId, uint checkInDate, uint checkOutDate) public payable {
+        require(roomId > 0 && roomId <= roomCount, "Invalid room ID");
+        require(rooms[roomId].isAvailable, "Room is not available");
+        require(checkInDate < checkOutDate, "Invalid dates");
+        uint totalPrice = rooms[roomId].pricePerNight * (checkOutDate - checkInDate) / 1 days;
+        require(msg.value == totalPrice, "Incorrect amount sent");
+
+        // Create a new booking
+        bookingCount++;
+        bookings[bookingCount] = Booking(msg.sender, roomId, checkInDate, checkOutDate, true);
+
+        // Mark room as unavailable
+        rooms[roomId].isAvailable = false;
+
+        emit RoomBooked(bookingCount, msg.sender, roomId, checkInDate, checkOutDate);
+    }
+
+    // Cancel a booking (only the customer can cancel their own booking)
+    function cancelBooking(uint bookingId) public {
+        Booking storage booking = bookings[bookingId];
+        require(booking.isActive, "Booking is already cancelled");
+        require(booking.customer == msg.sender, "You are not the customer of this booking");
+
+        // Mark the booking as inactive and refund the customer
+        booking.isActive = false;
+        rooms[booking.roomId].isAvailable = true;
+
+        // Refund the remaining amount
+        uint refundAmount = rooms[booking.roomId].pricePerNight * (booking.checkOutDate - booking.checkInDate) / 1 days;
+        payable(msg.sender).transfer(refundAmount);
+
+        emit BookingCancelled(bookingId, msg.sender);
+    }
+
+    // Owner can withdraw funds from the contract
+    function withdrawFunds() public onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+
+    // Get the balance of the contract
+    function getContractBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+}
